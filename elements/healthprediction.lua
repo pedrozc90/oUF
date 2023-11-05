@@ -81,6 +81,13 @@ A default texture will be applied to the Texture widgets if they don't have a te
 local _, ns = ...
 local oUF = ns.oUF
 
+local UnitGetIncomingHeals = _G.UnitGetIncomingHeals
+local UnitGetIncomingHeals = _G.UnitGetIncomingHeals
+local UnitGetTotalAbsorbs = _G.UnitGetTotalAbsorbs
+local UnitGetTotalHealAbsorbs = _G.UnitGetTotalHealAbsorbs
+local UnitHealth = _G.UnitHealth
+local UnitHealthMax = _G.UnitHealthMax
+
 local function Update(self, event, unit)
 	if(self.unit ~= unit) then return end
 
@@ -96,10 +103,11 @@ local function Update(self, event, unit)
 		element:PreUpdate(unit)
 	end
 
-	local myIncomingHeal = UnitGetIncomingHeals(unit, 'player') or 0
-	local allIncomingHeal = UnitGetIncomingHeals(unit) or 0
-	local absorb = UnitGetTotalAbsorbs(unit) or 0
-	local healAbsorb = UnitGetTotalHealAbsorbs(unit) or 0
+	local isSmoothedEvent = (event == "UNIT_MAXHEALTH") or (event == "UNIT_HEALTH_FREQUENT") or (event == "UNIT_HEALTH")
+	local myIncomingHeal = UnitGetIncomingHeals and UnitGetIncomingHeals(unit, 'player') or 0
+	local allIncomingHeal = UnitGetIncomingHeals and UnitGetIncomingHeals(unit) or 0
+	local absorb = UnitGetTotalAbsorbs and UnitGetTotalAbsorbs(unit) or 0
+	local healAbsorb = UnitGetTotalHealAbsorbs and UnitGetTotalHealAbsorbs(unit) or 0
 	local health, maxHealth = UnitHealth(unit), UnitHealthMax(unit)
 	local otherIncomingHeal = 0
 	local hasOverHealAbsorb = false
@@ -138,14 +146,30 @@ local function Update(self, event, unit)
 	end
 
 	if(element.myBar) then
-		element.myBar:SetMinMaxValues(0, maxHealth)
-		element.myBar:SetValue(myIncomingHeal)
+		if (element.smoothing) then
+			element.myBar:SetMinMaxSmoothedValue(0, maxHealth)
+			element.myBar:SetSmoothedValue(myIncomingHeal)
+		end
+
+		if (not element.smoothing or not isSmoothedEvent) then
+			element.myBar:SetMinMaxValues(0, maxHealth)
+			element.myBar:SetValue(myIncomingHeal)
+		end
+
 		element.myBar:Show()
 	end
 
 	if(element.otherBar) then
-		element.otherBar:SetMinMaxValues(0, maxHealth)
-		element.otherBar:SetValue(otherIncomingHeal)
+		if (element.smoothing) then
+			element.otherBar:SetMinMaxValues(0, maxHealth)
+			element.otherBar:SetValue(otherIncomingHeal)
+		end
+
+		if (not element.smoothing or not isSmoothedEvent) then
+			element.otherBar:SetMinMaxValues(0, maxHealth)
+			element.otherBar:SetValue(otherIncomingHeal)
+		end
+
 		element.otherBar:Show()
 	end
 
@@ -216,22 +240,35 @@ local function Enable(self)
 		element.ForceUpdate = ForceUpdate
 
 		self:RegisterEvent('UNIT_HEALTH', Path)
-		self:RegisterEvent('UNIT_MAXHEALTH', Path)
-		self:RegisterEvent('UNIT_HEAL_PREDICTION', Path)
-		self:RegisterEvent('UNIT_ABSORB_AMOUNT_CHANGED', Path)
-		self:RegisterEvent('UNIT_HEAL_ABSORB_AMOUNT_CHANGED', Path)
+
+		if (oUF.isRetail) then
+			self:RegisterEvent('UNIT_MAXHEALTH', Path)
+			self:RegisterEvent('UNIT_HEAL_PREDICTION', Path)
+			self:RegisterEvent('UNIT_ABSORB_AMOUNT_CHANGED', Path)
+			self:RegisterEvent('UNIT_HEAL_ABSORB_AMOUNT_CHANGED', Path)
+		end
 
 		if(not element.maxOverflow) then
 			element.maxOverflow = 1.05
 		end
 
-		if(element.myBar) then
+		if (element.myBar) then
+			if (element.smoothing) then
+                element.myBar.SetSmoothedValue = SmoothStatusBarMixin.SetSmoothedValue
+                element.myBar.SetMinMaxSmoothedValue = SmoothStatusBarMixin.SetMinMaxSmoothedValue
+            end
+
 			if(element.myBar:IsObjectType('StatusBar') and not element.myBar:GetStatusBarTexture()) then
 				element.myBar:SetStatusBarTexture([[Interface\TargetingFrame\UI-StatusBar]])
 			end
 		end
 
-		if(element.otherBar) then
+		if (element.otherBar) then
+			if (element.smoothing) then
+                element.otherBar.SetSmoothedValue = SmoothStatusBarMixin.SetSmoothedValue
+                element.otherBar.SetMinMaxSmoothedValue = SmoothStatusBarMixin.SetMinMaxSmoothedValue
+            end
+
 			if(element.otherBar:IsObjectType('StatusBar') and not element.otherBar:GetStatusBarTexture()) then
 				element.otherBar:SetStatusBarTexture([[Interface\TargetingFrame\UI-StatusBar]])
 			end
@@ -295,10 +332,13 @@ local function Disable(self)
 		end
 
 		self:UnregisterEvent('UNIT_HEALTH', Path)
-		self:UnregisterEvent('UNIT_MAXHEALTH', Path)
-		self:UnregisterEvent('UNIT_HEAL_PREDICTION', Path)
-		self:UnregisterEvent('UNIT_ABSORB_AMOUNT_CHANGED', Path)
-		self:UnregisterEvent('UNIT_HEAL_ABSORB_AMOUNT_CHANGED', Path)
+
+		if (oUF.isRetail) then
+			self:UnregisterEvent('UNIT_MAXHEALTH', Path)
+			self:UnregisterEvent('UNIT_HEAL_PREDICTION', Path)
+			self:UnregisterEvent('UNIT_ABSORB_AMOUNT_CHANGED', Path)
+			self:UnregisterEvent('UNIT_HEAL_ABSORB_AMOUNT_CHANGED', Path)
+		end
 	end
 end
 

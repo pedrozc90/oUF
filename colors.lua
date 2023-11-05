@@ -2,6 +2,8 @@ local _, ns = ...
 local oUF = ns.oUF
 local Private = oUF.Private
 
+local DebuffTypeColor = _G.DebuffTypeColor
+
 local frame_metatable = Private.frame_metatable
 
 local colorMixin = {
@@ -91,6 +93,10 @@ local colors = {
 	power = {},
 	threat = {},
 }
+
+for type, color in pairs(DebuffTypeColor) do
+	colors.debuff[type] = oUF:CreateColor(color.r, color.g, color.b)
+end
 
 -- We do this because people edit the vars directly, and changing the default
 -- globals makes SPICE FLOW!

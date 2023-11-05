@@ -217,7 +217,7 @@ local tagStrings = {
 
 	['difficulty'] = [[function(u)
 		if UnitCanAttack('player', u) then
-			local l = UnitEffectiveLevel(u)
+			local l = (UnitEffectiveLevel or UnitLevel)(u)
 			return Hex(GetCreatureDifficultyColor((l > 0) and l or 999))
 		end
 	end]],
@@ -258,8 +258,8 @@ local tagStrings = {
 	end]],
 
 	['level'] = [[function(u)
-		local l = UnitEffectiveLevel(u)
-		if(UnitIsWildBattlePet(u) or UnitIsBattlePetCompanion(u)) then
+		local l = (UnitEffectiveLevel or UnitLevel)(u)
+		if C_PetBattles and (UnitIsWildBattlePet(u) or UnitIsBattlePetCompanion(u)) then
 			l = UnitBattlePetLevel(u)
 		end
 
@@ -576,7 +576,7 @@ local tagEvents = {
 }
 
 local unitlessEvents = {
-	ARENA_PREP_OPPONENT_SPECIALIZATIONS = true,
+	ARENA_PREP_OPPONENT_SPECIALIZATIONS = (not oUF.isClassic) and true or nil,
 	GROUP_ROSTER_UPDATE = true,
 	NEUTRAL_FACTION_SELECT_RESULT = true,
 	PARTY_LEADER_CHANGED = true,
@@ -935,8 +935,7 @@ oUF.Tags = {
 	RefreshMethods = function(self, tag)
 		if(not tag) then return end
 
-		-- if a tag's name contains magic chars, there's a chance that string.match will fail to
-		-- find the match
+		-- if a tag's name contains magic chars, there's a chance that string.match will fail to find the match.
 		tag = '%[' .. tag:gsub('[%^%$%(%)%%%.%*%+%-%?]', '%%%1') .. '%]'
 
 		for bracket in next, bracketFuncs do
@@ -964,8 +963,7 @@ oUF.Tags = {
 	RefreshEvents = function(self, tag)
 		if(not tag) then return end
 
-		-- if a tag's name contains magic chars, there's a chance that string.match will fail to
-		-- find the match
+		-- if a tag's name contains magic chars, there's a chance that string.match will fail to find the match.
 		tag = '%[' .. tag:gsub('[%^%$%(%)%%%.%*%+%-%?]', '%%%1') .. '%]'
 
 		for tagstr in next, tagStringFuncs do

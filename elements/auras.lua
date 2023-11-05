@@ -73,18 +73,25 @@ button.auraInstanceID - unique ID for the current aura being tracked by the butt
 local _, ns = ...
 local oUF = ns.oUF
 
-local function UpdateTooltip(self)
-	if(GameTooltip:IsForbidden()) then return end
+local MAX_NUMBER_BUFFS = 32
+local MAX_NUMBER_DEBUFFS = 40
 
-	if(self.isHarmful) then
-		GameTooltip:SetUnitDebuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+local function UpdateTooltip(self)
+	if (GameTooltip:IsForbidden()) then return end
+
+	if (oUF.isRetail) then
+		if(self.isHarmful) then
+			GameTooltip:SetUnitDebuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+		else
+			GameTooltip:SetUnitBuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+		end
 	else
-		GameTooltip:SetUnitBuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+		GameTooltip:SetUnitAura(self:GetParent().__owner.unit, self:GetID(), self.filter)
 	end
 end
 
 local function onEnter(self)
-	if(GameTooltip:IsForbidden() or not self:IsVisible()) then return end
+	if (GameTooltip:IsForbidden() or not self:IsVisible()) then return end
 
 	-- Avoid parenting GameTooltip to frames with anchoring restrictions,
 	-- otherwise it'll inherit said restrictions which will cause issues with
@@ -267,6 +274,7 @@ local function processData(element, unit, data)
 	if(not data) then return end
 
 	data.isPlayerAura = data.sourceUnit and (UnitIsUnit('player', data.sourceUnit) or UnitIsOwnerOrControllerOfUnit('player', data.sourceUnit))
+	data.dispelColor = oUF.colors.debuff[data.dispelName or "none"] or oUF.colors.debuff["none"]
 
 	--[[ Callback: Auras:PostProcessAuraData(unit, data)
 	Called after the aura data has been processed.
@@ -279,14 +287,14 @@ local function processData(element, unit, data)
 
 	* data - the processed aura data (table)
 	--]]
-	if(element.PostProcessAuraData) then
+	if (element.PostProcessAuraData) then
 		data = element:PostProcessAuraData(unit, data)
 	end
 
 	return data
 end
 
-local function UpdateAuras(self, event, unit, updateInfo)
+local function UpdateAurasRetail(self, event, unit, updateInfo)
 	if(self.unit ~= unit) then return end
 
 	local isFullUpdate = not updateInfo or updateInfo.isFullUpdate
@@ -792,6 +800,406 @@ local function UpdateAuras(self, event, unit, updateInfo)
 		end
 	end
 end
+
+function oUF:UnitAura(unit, index, filter)
+	local name, icon, count, dispelName, duration, expirationTime, source,
+	isStealable, nameplateShowPersonal, spellId, canApplyAura, isBossDebuff,
+	castByPlayer, nameplateShowAll, timeMod, effect1, effect2, effect3 = UnitAura(unit, index, filter)
+
+	return {
+		name = name,
+		icon = icon,
+		spellId = spellId,
+		applications = count or 0,
+		duration = duration,
+		expirationTime = expirationTime,
+		sourceUnit = source,
+		isStealable = isStealable,
+		canApplyAura = canApplyAura,
+		isBossAura = isBossDebuff,
+		isFromPlayerOrPlayerPet = castByPlayer,
+		timeMod = timeMod,
+		dispelName = dispelName,
+		nameplateShowAll = nameplateShowAll,
+		nameplateShowPersonal = nameplateShowPersonal,
+		isHarmful = (filter and filter:find("HARMFUL") ~= nil or true),
+		isHelpful = (filter and filter:find("HELPFUL") ~= nil or false),
+
+		-- unknown
+		points = nil,
+		auraInstanceID = index,
+		isRaid = false,
+		isNameplateOnly = false,
+
+		-- extras
+		effect1 = effect1,
+		effect2 = effect2,
+		effect3 = effect3
+	}
+end
+
+
+local function UpdateAurasClassic(self, event, unit, updateInfo)
+	if (self.unit ~= unit) then return end
+
+	local isFullUpdate = true
+
+	local auras = self.Auras
+	if (auras) then
+		--[[ Callback: Auras:PreUpdate(unit, isFullUpdate)
+		Called before the element has been updated.
+
+		* self         - the widget holding the aura buttons
+		* unit         - the unit for which the update has been triggered (string)
+		* isFullUpdate - indicates whether the element is performing a full update (boolean)
+		--]]
+		if(auras.PreUpdate) then auras:PreUpdate(unit, isFullUpdate) end
+
+		local buffsChanged = false
+		local numBuffs = auras.numBuffs or MAX_NUMBER_BUFFS
+		local buffFilter = auras.buffFilter or auras.filter or 'HELPFUL'
+		if (type(buffFilter) == 'function') then
+			buffFilter = buffFilter(auras, unit)
+		end
+
+		local debuffsChanged = false
+		local numDebuffs = auras.numDebuffs or MAX_NUMBER_DEBUFFS
+		local debuffFilter = auras.debuffFilter or auras.filter or 'HARMFUL'
+		if (type(debuffFilter) == 'function') then
+			debuffFilter = debuffFilter(auras, unit)
+		end
+
+		local numTotal = auras.numTotal or numBuffs + numDebuffs
+
+		auras.allBuffs = table.wipe(auras.allBuffs or {})
+		auras.activeBuffs = table.wipe(auras.activeBuffs or {})
+		buffsChanged = true
+
+		for index = 1, MAX_NUMBER_BUFFS do -- #1 return is continuationToken, we don't care about it
+			local buffInfo = oUF:UnitAura(unit, index, buffFilter)
+			local data = processData(auras, unit, buffInfo)
+			auras.allBuffs[data.auraInstanceID] = data
+
+			--[[ Override: Auras:FilterAura(unit, data)
+			Defines a custom filter that controls if the aura button should be shown.
+
+			* self - the widget holding the aura buttons
+			* unit - the unit for which the update has been triggered (string)
+			* data - [UnitAuraInfo](https://wowpedia.fandom.com/wiki/Struct_UnitAuraInfo) object (table)
+
+			## Returns
+
+			* show - indicates whether the aura button should be shown (boolean)
+			--]]
+			if((auras.FilterAura or FilterAura) (auras, unit, data)) then
+				auras.activeBuffs[data.auraInstanceID] = true
+			end
+		end
+
+		auras.allDebuffs = table.wipe(auras.allDebuffs or {})
+		auras.activeDebuffs = table.wipe(auras.activeDebuffs or {})
+		debuffsChanged = true
+
+		for index = 1, MAX_NUMBER_DEBUFFS do
+			local debuffInfo = oUF:UnitAura(unit, index, debuffFilter)
+			local data = processData(auras, unit, debuffInfo)
+			auras.allDebuffs[data.auraInstanceID] = data
+
+			if((auras.FilterAura or FilterAura) (auras, unit, data)) then
+				auras.activeDebuffs[data.auraInstanceID] = true
+			end
+		end
+
+		--[[ Callback: Auras:PostUpdateInfo(unit, buffsChanged, debuffsChanged)
+		Called after the aura update info has been updated and filtered, but before sorting.
+
+		* self           - the widget holding the aura buttons
+		* unit           - the unit for which the update has been triggered (string)
+		* buffsChanged   - indicates whether the buff info has changed (boolean)
+		* debuffsChanged - indicates whether the debuff info has changed (boolean)
+		--]]
+		if (auras.PostUpdateInfo) then
+			auras:PostUpdateInfo(unit, buffsChanged, debuffsChanged)
+		end
+
+		if(buffsChanged or debuffsChanged) then
+			local numVisible
+
+			if(buffsChanged) then
+				-- instead of removing auras one by one, just wipe the tables entirely
+				-- and repopulate them, multiple table.remove calls are insanely slow
+				auras.sortedBuffs = table.wipe(auras.sortedBuffs or {})
+
+				for auraInstanceID in next, auras.activeBuffs do
+					table.insert(auras.sortedBuffs, auras.allBuffs[auraInstanceID])
+				end
+
+				--[[ Override: Auras:SortBuffs(a, b)
+				Defines a custom sorting algorithm for ordering the auras.
+
+				Defaults to [AuraUtil.DefaultAuraCompare](https://github.com/Gethe/wow-ui-source/search?q=DefaultAuraCompare).
+				--]]
+				--[[ Override: Auras:SortAuras(a, b)
+				Defines a custom sorting algorithm for ordering the auras.
+
+				Defaults to [AuraUtil.DefaultAuraCompare](https://github.com/Gethe/wow-ui-source/search?q=DefaultAuraCompare).
+
+				Overridden by the more specific SortBuffs and/or SortDebuffs overrides if they are defined.
+				--]]
+				table.sort(auras.sortedBuffs, auras.SortBuffs or auras.SortAuras or SortAuras)
+
+				numVisible = math.min(numBuffs, numTotal, #auras.sortedBuffs)
+
+				for i = 1, numVisible do
+					updateAura(auras, unit, auras.sortedBuffs[i], i)
+				end
+			else
+				numVisible = math.min(numBuffs, numTotal, #auras.sortedBuffs)
+			end
+
+			-- do it before adding the gap because numDebuffs could end up being 0
+			if(debuffsChanged) then
+				auras.sortedDebuffs = table.wipe(auras.sortedDebuffs or {})
+
+				for auraInstanceID in next, auras.activeDebuffs do
+					table.insert(auras.sortedDebuffs, auras.allDebuffs[auraInstanceID])
+				end
+
+				--[[ Override: Auras:SortDebuffs(a, b)
+				Defines a custom sorting algorithm for ordering the auras.
+
+				Defaults to [AuraUtil.DefaultAuraCompare](https://github.com/Gethe/wow-ui-source/search?q=DefaultAuraCompare).
+				--]]
+				table.sort(auras.sortedDebuffs, auras.SortDebuffs or auras.SortAuras or SortAuras)
+			end
+
+			numDebuffs = math.min(numDebuffs, numTotal - numVisible, #auras.sortedDebuffs)
+
+			if(auras.gap and numVisible > 0 and numDebuffs > 0) then
+				-- adjust the number of visible debuffs if there's an overflow
+				if(numVisible + numDebuffs == numTotal) then
+					numDebuffs = numDebuffs - 1
+				end
+
+				-- double check and skip it if we end up with 0 after the adjustment
+				if(numDebuffs > 0) then
+					numVisible = numVisible + 1
+
+					local button = auras[numVisible]
+					if(not button) then
+						button = (auras.CreateButton or CreateButton) (auras, numVisible)
+						table.insert(auras, button)
+						auras.createdButtons = auras.createdButtons + 1
+					end
+
+					-- prevent the button from displaying anything
+					if(button.Cooldown) then button.Cooldown:Hide() end
+					if(button.Icon) then button.Icon:SetTexture() end
+					if(button.Overlay) then button.Overlay:Hide() end
+					if(button.Stealable) then button.Stealable:Hide() end
+					if(button.Count) then button.Count:SetText() end
+
+					button:EnableMouse(false)
+					button:Show()
+
+					--[[ Callback: Auras:PostUpdateGapButton(unit, gapButton, position)
+					Called after an invisible aura button has been created. Only used by Auras when the `gap` option is enabled.
+
+					* self      - the widget holding the aura buttons
+					* unit      - the unit that has the invisible aura button (string)
+					* gapButton - the invisible aura button (Button)
+					* position  - the position of the invisible aura button (number)
+					--]]
+					if(auras.PostUpdateGapButton) then
+						auras:PostUpdateGapButton(unit, button, numVisible)
+					end
+				end
+			end
+
+			-- any changes to buffs will affect debuffs, so just redraw them even if nothing changed
+			for i = 1, numDebuffs do
+				updateAura(auras, unit, auras.sortedDebuffs[i], numVisible + i)
+			end
+
+			numVisible = numVisible + numDebuffs
+			local visibleChanged = false
+
+			if(numVisible ~= auras.visibleButtons) then
+				auras.visibleButtons = numVisible
+				visibleChanged = auras.reanchorIfVisibleChanged -- more convenient than auras.reanchorIfVisibleChanged and visibleChanged
+			end
+
+			for i = numVisible + 1, #auras do
+				auras[i]:Hide()
+			end
+
+			if(visibleChanged or auras.createdButtons > auras.anchoredButtons) then
+				--[[ Override: Auras:SetPosition(from, to)
+				Used to (re-)anchor the aura buttons.
+				Called when new aura buttons have been created or the number of visible buttons has changed if the
+				`.reanchorIfVisibleChanged` option is enabled.
+
+				* self - the widget that holds the aura buttons
+				* from - the offset of the first aura button to be (re-)anchored (number)
+				* to   - the offset of the last aura button to be (re-)anchored (number)
+				--]]
+				if(visibleChanged) then
+					-- this is useful for when people might want centred auras, like nameplates
+					(auras.SetPosition or SetPosition) (auras, 1, numVisible)
+				else
+					(auras.SetPosition or SetPosition) (auras, auras.anchoredButtons + 1, auras.createdButtons)
+					auras.anchoredButtons = auras.createdButtons
+				end
+			end
+
+			--[[ Callback: Auras:PostUpdate(unit)
+			Called after the element has been updated.
+
+			* self - the widget holding the aura buttons
+			* unit - the unit for which the update has been triggered (string)
+			--]]
+			if(auras.PostUpdate) then auras:PostUpdate(unit) end
+		end
+	end
+
+	local buffs = self.Buffs
+	if (buffs) then
+		if (buffs.PreUpdate) then buffs:PreUpdate(unit, isFullUpdate) end
+
+		local buffsChanged = false
+		local numBuffs = buffs.num or MAX_NUMBER_BUFFS
+		local buffFilter = buffs.filter or 'HELPFUL'
+		if (type(buffFilter) == 'function') then
+			buffFilter = buffFilter(buffs, unit)
+		end
+
+		buffs.all = table.wipe(buffs.all or {})
+		buffs.active = table.wipe(buffs.active or {})
+		buffsChanged = true
+
+		for index = 1, MAX_NUMBER_BUFFS do
+			local buffInfo = oUF:UnitAura(unit, index, buffFilter)
+			local data = processData(buffs, unit, buffInfo)
+			buffs.all[data.auraInstanceID] = data
+
+			if((buffs.FilterAura or FilterAura) (buffs, unit, data)) then
+				buffs.active[data.auraInstanceID] = true
+			end
+		end
+
+		if(buffs.PostUpdateInfo) then
+			buffs:PostUpdateInfo(unit, buffsChanged)
+		end
+
+		if(buffsChanged) then
+			buffs.sorted = table.wipe(buffs.sorted or {})
+
+			for auraInstanceID in next, buffs.active do
+				table.insert(buffs.sorted, buffs.all[auraInstanceID])
+			end
+
+			table.sort(buffs.sorted, buffs.SortBuffs or buffs.SortAuras or SortAuras)
+
+			local numVisible = math.min(numBuffs, #buffs.sorted)
+
+			for i = 1, numVisible do
+				updateAura(buffs, unit, buffs.sorted[i], i)
+			end
+
+			local visibleChanged = false
+
+			if(numVisible ~= buffs.visibleButtons) then
+				buffs.visibleButtons = numVisible
+				visibleChanged = buffs.reanchorIfVisibleChanged
+			end
+
+			for i = numVisible + 1, #buffs do
+				buffs[i]:Hide()
+			end
+
+			if(visibleChanged or buffs.createdButtons > buffs.anchoredButtons) then
+				if(visibleChanged) then
+					(buffs.SetPosition or SetPosition) (buffs, 1, numVisible)
+				else
+					(buffs.SetPosition or SetPosition) (buffs, buffs.anchoredButtons + 1, buffs.createdButtons)
+					buffs.anchoredButtons = buffs.createdButtons
+				end
+			end
+
+			if(buffs.PostUpdate) then buffs:PostUpdate(unit) end
+		end
+	end
+
+	local debuffs = self.Debuffs
+	if(debuffs) then
+		if(debuffs.PreUpdate) then debuffs:PreUpdate(unit, isFullUpdate) end
+
+		local debuffsChanged = false
+		local numDebuffs = debuffs.num or MAX_NUMBER_DEBUFFS
+		local debuffFilter = debuffs.filter or 'HARMFUL'
+		if(type(debuffFilter) == 'function') then
+			debuffFilter = debuffFilter(debuffs, unit)
+		end
+
+		debuffs.all = table.wipe(debuffs.all or {})
+		debuffs.active = table.wipe(debuffs.active or {})
+		debuffsChanged = true
+
+		for index = 1, MAX_NUMBER_DEBUFFS do
+			local debuffInfo = oUF:UnitAura(unit, index, debuffFilter)
+			local data = processData(debuffs, unit, debuffInfo)
+			debuffs.all[data.auraInstanceID] = data
+
+			if((debuffs.FilterAura or FilterAura) (debuffs, unit, data)) then
+				debuffs.active[data.auraInstanceID] = true
+			end
+		end
+
+		if(debuffs.PostUpdateInfo) then
+			debuffs:PostUpdateInfo(unit, debuffsChanged)
+		end
+
+		if(debuffsChanged) then
+			debuffs.sorted = table.wipe(debuffs.sorted or {})
+
+			for auraInstanceID in next, debuffs.active do
+				table.insert(debuffs.sorted, debuffs.all[auraInstanceID])
+			end
+
+			table.sort(debuffs.sorted, debuffs.SortDebuffs or debuffs.SortAuras or SortAuras)
+
+			local numVisible = math.min(numDebuffs, #debuffs.sorted)
+
+			for i = 1, numVisible do
+				updateAura(debuffs, unit, debuffs.sorted[i], i)
+			end
+
+			local visibleChanged = false
+
+			if(numVisible ~= debuffs.visibleButtons) then
+				debuffs.visibleButtons = numVisible
+				visibleChanged = debuffs.reanchorIfVisibleChanged
+			end
+
+			for i = numVisible + 1, #debuffs do
+				debuffs[i]:Hide()
+			end
+
+			if(visibleChanged or debuffs.createdButtons > debuffs.anchoredButtons) then
+				if(visibleChanged) then
+					(debuffs.SetPosition or SetPosition) (debuffs, 1, numVisible)
+				else
+					(debuffs.SetPosition or SetPosition) (debuffs, debuffs.anchoredButtons + 1, debuffs.createdButtons)
+					debuffs.anchoredButtons = debuffs.createdButtons
+				end
+			end
+
+			if(debuffs.PostUpdate) then debuffs:PostUpdate(unit) end
+		end
+	end
+end
+
+local UpdateAuras = oUF.isRetail and UpdateAurasRetail or UpdateAurasClassic
 
 local function Update(self, event, unit, updateInfo)
 	if(self.unit ~= unit) then return end

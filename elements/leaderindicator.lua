@@ -25,6 +25,11 @@ This element updates by changing the texture.
 local _, ns = ...
 local oUF = ns.oUF
 
+local HasLFGRestrictions = _G.HasLFGRestrictions
+local UnitIsGroupLeader = _G.UnitIsGroupLeader
+local UnitLeadsAnyGroup = _G.UnitLeadsAnyGroup
+local IsInInstance = _G.IsInInstance
+
 local function Update(self, event)
 	local element = self.LeaderIndicator
 	local unit = self.unit
@@ -47,8 +52,8 @@ local function Update(self, event)
 	-- own groups via UnitIsGroupLeader(unit, LE_PARTY_CATEGORY_HOME) or by members of other groups via
 	-- UnitLeadsAnyGroup(unit). Inside the group formed by the dungeon finder UnitIsGroupLeader(unit) will only return
 	-- true for the instance leader.
-	local isInLFGInstance = HasLFGRestrictions()
-	local isLeader = UnitIsGroupLeader(unit)
+	local isInLFGInstance = HasLFGRestrictions and HasLFGRestrictions() or false
+	local isLeader = IsInInstance() and UnitIsGroupLeader(unit) or UnitLeadsAnyGroup(unit)
 	if(isLeader) then
 		if(isInLFGInstance) then
 			element:SetTexture([[Interface\LFGFrame\UI-LFG-ICON-PORTRAITROLES]])

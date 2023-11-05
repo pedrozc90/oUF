@@ -1,5 +1,6 @@
 local parent, ns = ...
-local global = C_AddOns.GetAddOnMetadata(parent, 'X-oUF')
+local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+local global = GetAddOnMetadata(parent, 'X-oUF')
 local _VERSION = '@project-version@'
 if(_VERSION:find('project%-version')) then
 	_VERSION = 'devel'
@@ -18,6 +19,9 @@ local callback, objects, headers = {}, {}, {}
 
 local elements = {}
 local activeElements = {}
+
+local GetNamePlateForUnit = C_NamePlate.GetNamePlateForUnit
+local PingableType_UnitFrameMixin = _G.PingableType_UnitFrameMixin
 
 local PetBattleFrameHider = CreateFrame('Frame', (global or parent) .. '_PetBattleFrameHider', UIParent, 'SecureHandlerStateTemplate')
 PetBattleFrameHider:SetAllPoints()
@@ -243,12 +247,12 @@ local function updateRaid(self, event)
 	end
 end
 
--- boss6-8 exsist in some encounters, but unit event registration seems to be
+-- boss6-8 exist in some encounters, but unit event registration seems to be
 -- completely broken for them, so instead we use OnUpdate to update them.
 local eventlessUnits = {
 	boss6 = true,
 	boss7 = true,
-	boss8 = true,
+	boss8 = true
 }
 
 local function isEventlessUnit(unit)
@@ -356,7 +360,9 @@ local function initObject(unit, style, styleFunc, header, ...)
 			func(object)
 		end
 
-		Mixin(object, PingableType_UnitFrameMixin)
+		if PingableType_UnitFrameMixin then
+			Mixin(object, PingableType_UnitFrameMixin)
+		end
 
 		-- Make Clique kinda happy
 		if(not object.isNamePlate) then
@@ -784,6 +790,7 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 	eventHandler:RegisterEvent('NAME_PLATE_UNIT_ADDED')
 	eventHandler:RegisterEvent('NAME_PLATE_UNIT_REMOVED')
 	eventHandler:RegisterEvent('PLAYER_TARGET_CHANGED')
+	eventHandler:RegisterEvent('UNIT_FACTION')
 
 	if(IsLoggedIn()) then
 		if(nameplateCVars) then
@@ -803,18 +810,27 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 				end
 			end
 		elseif(event == 'PLAYER_TARGET_CHANGED') then
-			local nameplate = C_NamePlate.GetNamePlateForUnit('target')
+			local nameplate = GetNamePlateForUnit('target')
+			local unitFrame = nameplate and nameplate.unitFrame
+
 			if(nameplateCallback) then
-				nameplateCallback(nameplate and nameplate.unitFrame, event, 'target')
+				nameplateCallback(unitFrame, event, 'target')
 			end
 
 			-- UAE is called after the callback to reduce the number of
 			-- ForceUpdate calls layout devs have to do themselves
-			if(nameplate) then
+			if unitFrame and unitFrame.UpdateAllElements then
 				nameplate.unitFrame:UpdateAllElements(event)
 			end
+		elseif(event == 'UNIT_FACTION' and unit) then
+			local nameplate = GetNamePlateForUnit(unit)
+			if (not nameplate) then return end
+
+			if (nameplateCallback) then
+				nameplateCallback(nameplate.unitFrame, event, unit)
+			end
 		elseif(event == 'NAME_PLATE_UNIT_ADDED' and unit) then
-			local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+			local nameplate = GetNamePlateForUnit(unit)
 			if(not nameplate) then return end
 
 			if(not nameplate.unitFrame) then
@@ -851,9 +867,11 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 
 			-- UAE is called after the callback to reduce the number of
 			-- ForceUpdate calls layout devs have to do themselves
-			nameplate.unitFrame:UpdateAllElements(event)
+			if nameplate.unitFrame.UpdateAllElements then
+				nameplate.unitFrame:UpdateAllElements(event)
+			end
 		elseif(event == 'NAME_PLATE_UNIT_REMOVED' and unit) then
-			local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+			local nameplate = GetNamePlateForUnit(unit)
 			if(not nameplate) then return end
 
 			nameplate.unitFrame:SetAttribute('unit', nil)
