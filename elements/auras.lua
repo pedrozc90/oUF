@@ -73,20 +73,27 @@ button.auraInstanceID - unique ID for the current aura being tracked by the butt
 local _, ns = ...
 local oUF = ns.oUF
 
+local UnitAura = _G.UnitAura
+local UnitIsFriend = _G.UnitIsFriend
+local UnitIsEnemy = _G.UnitIsEnemy
+
+local LCD = oUF.isClassic and LibStub("LibClassicDurations", true);
+
 local MAX_NUMBER_BUFFS = 32
 local MAX_NUMBER_DEBUFFS = 40
 
 local function UpdateTooltip(self)
 	if (GameTooltip:IsForbidden()) then return end
+	local unit = self:GetParent().__owner.unit
 
 	if (oUF.isRetail) then
 		if(self.isHarmful) then
-			GameTooltip:SetUnitDebuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+			GameTooltip:SetUnitDebuffByAuraInstanceID(unit, self.auraInstanceID)
 		else
-			GameTooltip:SetUnitBuffByAuraInstanceID(self:GetParent().__owner.unit, self.auraInstanceID)
+			GameTooltip:SetUnitBuffByAuraInstanceID(unit, self.auraInstanceID)
 		end
 	else
-		GameTooltip:SetUnitAura(self:GetParent().__owner.unit, self:GetID(), self.filter)
+		GameTooltip:SetUnitAura(unit, self.auraInstanceID, self.isHarmful and "HARMFUL" or "HELPFUL")
 	end
 end
 
@@ -274,7 +281,9 @@ local function processData(element, unit, data)
 	if(not data) then return end
 
 	data.isPlayerAura = data.sourceUnit and (UnitIsUnit('player', data.sourceUnit) or UnitIsOwnerOrControllerOfUnit('player', data.sourceUnit))
-	data.dispelColor = oUF.colors.debuff[data.dispelName or "none"] or oUF.colors.debuff["none"]
+	data.isTargetFriendly = UnitIsFriend("player", unit)
+	data.isTargetEnemy = UnitIsEnemy("player", unit)
+	data.dispelColor = (data.dispelName) and oUF.colors.debuff[data.dispelName] or oUF.colors.debuff["none"]
 
 	--[[ Callback: Auras:PostProcessAuraData(unit, data)
 	Called after the aura data has been processed.
@@ -803,8 +812,27 @@ end
 
 function oUF:UnitAura(unit, index, filter)
 	local name, icon, count, dispelName, duration, expirationTime, source,
-	isStealable, nameplateShowPersonal, spellId, canApplyAura, isBossDebuff,
-	castByPlayer, nameplateShowAll, timeMod, effect1, effect2, effect3 = UnitAura(unit, index, filter)
+		isStealable, nameplateShowPersonal, spellId, canApplyAura, isBossDebuff,
+		castByPlayer, nameplateShowAll, timeMod, effect1, effect2, effect3
+
+	if (LCD and unit ~= "player") then
+		name, icon, count, dispelName, duration, expirationTime, source,
+		isStealable, nameplateShowPersonal, spellId, canApplyAura, isBossDebuff,
+		castByPlayer, nameplateShowAll, timeMod, effect1, effect2, effect3 = LCD:UnitAura(unit, index, filter)
+
+		if (spellId) then
+			local durationNew, expirationTimeNew = LCD:GetAuraDurationByUnit(unit, spellId, source, name)
+
+			if (duration == 0 and durationNew) then
+				duration = durationNew
+				expirationTime = expirationTimeNew
+			end
+		end
+	else
+		name, icon, count, dispelName, duration, expirationTime, source,
+		isStealable, nameplateShowPersonal, spellId, canApplyAura, isBossDebuff,
+    	castByPlayer, nameplateShowAll, timeMod, effect1, effect2, effect3 = UnitAura(unit, index, filter)
+	end
 
 	return {
 		name = name,
@@ -822,8 +850,8 @@ function oUF:UnitAura(unit, index, filter)
 		dispelName = dispelName,
 		nameplateShowAll = nameplateShowAll,
 		nameplateShowPersonal = nameplateShowPersonal,
-		isHarmful = (filter and filter:find("HARMFUL") ~= nil or true),
-		isHelpful = (filter and filter:find("HELPFUL") ~= nil or false),
+		isHarmful = (filter and filter:find("HARMFUL") ~= nil or false),
+		isHelpful = (filter and filter:find("HELPFUL") ~= nil or true),
 
 		-- unknown
 		points = nil,
