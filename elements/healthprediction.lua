@@ -152,12 +152,12 @@ local function Update(self, event, unit)
 
 	if(element.myBar) then
 		if (element.smoothing) then
-			element.myBar:SetMinMaxSmoothedValue(0, maxHealth)
+			element.myBar:SetMinMaxSmoothedValue(-0.001, maxHealth)
 			element.myBar:SetSmoothedValue(myIncomingHeal)
 		end
 
 		if (not element.smoothing or not isSmoothedEvent) then
-			element.myBar:SetMinMaxValues(0, maxHealth)
+			element.myBar:SetMinMaxValues(-0.001, maxHealth)
 			element.myBar:SetValue(myIncomingHeal)
 		end
 
@@ -166,12 +166,12 @@ local function Update(self, event, unit)
 
 	if(element.otherBar) then
 		if (element.smoothing) then
-			element.otherBar:SetMinMaxValues(0, maxHealth)
+			element.otherBar:SetMinMaxValues(-0.001, maxHealth)
 			element.otherBar:SetValue(otherIncomingHeal)
 		end
 
 		if (not element.smoothing or not isSmoothedEvent) then
-			element.otherBar:SetMinMaxValues(0, maxHealth)
+			element.otherBar:SetMinMaxValues(-0.001, maxHealth)
 			element.otherBar:SetValue(otherIncomingHeal)
 		end
 
@@ -179,13 +179,13 @@ local function Update(self, event, unit)
 	end
 
 	if(element.absorbBar) then
-		element.absorbBar:SetMinMaxValues(0, maxHealth)
+		element.absorbBar:SetMinMaxValues(-0.001, maxHealth)
 		element.absorbBar:SetValue(absorb)
 		element.absorbBar:Show()
 	end
 
 	if(element.healAbsorbBar) then
-		element.healAbsorbBar:SetMinMaxValues(0, maxHealth)
+		element.healAbsorbBar:SetMinMaxValues(-0.001, maxHealth)
 		element.healAbsorbBar:SetValue(healAbsorb)
 		element.healAbsorbBar:Show()
 	end
