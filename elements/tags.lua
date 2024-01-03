@@ -576,7 +576,7 @@ local tagEvents = {
 }
 
 local unitlessEvents = {
-	ARENA_PREP_OPPONENT_SPECIALIZATIONS = (not oUF.isClassic) and true or nil,
+	ARENA_PREP_OPPONENT_SPECIALIZATIONS = (oUF.isRetail) and true or nil,
 	GROUP_ROSTER_UPDATE = true,
 	NEUTRAL_FACTION_SELECT_RESULT = true,
 	PARTY_LEADER_CHANGED = true,
@@ -584,7 +584,7 @@ local unitlessEvents = {
 	PLAYER_TALENT_UPDATE = true,
 	PLAYER_TARGET_CHANGED = true,
 	PLAYER_UPDATE_RESTING = true,
-	RUNE_POWER_UPDATE = true,
+	RUNE_POWER_UPDATE = true
 }
 
 local eventFontStrings = {}
